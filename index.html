@@ -1,0 +1,283 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<title>reveal.js</title>
+
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/blood.css" id="theme">
+
+		<!-- Theme used for syntax highlighting of code -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<!-- Printing and PDF exports -->
+		<script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script>
+	</head>
+	<body>
+		<div class="reveal">
+			<div class="slides">
+            <section>
+                <h3>Mise en oeuvre d'un projet openstack</h3>
+                <em>Chronique d'une projet Openstack</em>
+            </section>
+            <section data-markdown>
+                <script type="text/template">
+                    ## Qui Suis-Je
+                    * Cédric Roger
+                    * Parcours
+                      * Dev système/SIP
+                      * Ingénieur Systèmes 
+                    * Compétences:
+                      * tout ce qui touche de près ou de loin à un système GNU Linux
+                      * Dev : python, etc.
+                </script>
+            </section>
+            <section>
+                <section data-markdown>
+                    <script type="text/template">
+                        ## Le projet
+                        * Organisme de formation
+                        * Plusieurs sites en Bretagne
+                        * Infra virtualisée sur chaque site
+                        * Administration manuelle des systèmes
+                    </script>    
+                </section>
+                <section data-markdown>
+                    ### Le besoin
+                    * Automatiser l'infrastructure
+                    * Dynamiser la gestion des serveurs virtuels
+                    * Centraliser la gestion de l'infrastructure
+                    * TP
+                    * indépendance réseaux
+                </section>
+                <section data-markdown>
+                    ### Contraintes
+                    * reutilisation des serveurs existants
+                    * utilisation de SAN
+                </section>
+            </section>
+            <section data-markdown>
+                ### Choix de la techno
+                openstack :
+                * interface unique (Horizon)
+                * isolation des réseaux (Neutron, linux-bridge)
+                * gestion des droits par projet / site / utilisateur (Keystone)
+                * centralisation des images (Glance)
+                * regroupement des cluster par région
+            </section>
+            <section>
+                <section data-markdown>
+                ### Déploiement 
+                * 3 noeuds concentrant les 3 roles: controler node / computer node / storage node 
+                * chaque cluster correspondant à un site (région)
+                * Projet OSA - openstack-ansible
+                    * avoir la meme installation sur chacun des sites
+                    * debuggage aisé car utilisation d'ansible au quotidien 
+                </section>
+                <section>
+                    fichier openstack_user_config.yml <br/>
+                    Déclaration des plages réseaux
+                    <pre><code>cidr_networks:
+  container: 10.33.2.0/24
+  tunnel: 10.31.2.0/24
+  storage: 10.99.2.0/24</code></pre>
+                </section>
+                <section>
+                    fichier openstack_user_config.yml <br/>
+                    Surchages des variables globales
+                    <pre><code>global_overrides:
+  internal_lb_vip_address: 10.33.2.21
+  external_lb_vip_address: 10.33.2.21
+  management_bridge: "br-osapi"
+  tunnel_bridge: "br-vxlan"
+    - network:
+        group_binds:
+          - neutron_linuxbridge_agent
+        container_bridge: "br-vxlan"
+        container_type: "veth"
+        container_interface: "eth10"
+        ip_from_q: "tunnel"
+        type: "vxlan"
+        range: "1000:2000"
+        net_name: "vxlan"</code></pre>
+                </section>
+                <section>
+                    fichier openstack_user_config.yml <br/>
+                    Déclaration des hôtes
+                    <pre><code>compute_hosts:
+  st2cp1:
+    ip: 10.33.2.21
+  st2cp2:
+    ip: 10.33.2.22
+  st2cp3:
+    ip: 10.33.2.23
+
+storage-infra_hosts:
+  st2cp1:
+    ip: 10.33.2.21
+  st2cp2:
+    ip: 10.33.2.22
+  st2cp3:
+    ip: 10.33.2.23</code></pre>
+                </section>
+                <section>
+                    fichier openstack_user_config.yml <br/>
+                    Configuration du stockage
+                    <pre><code>
+storage_hosts:
+  st2cp1:
+    ip: 10.33.2.21
+    container_vars:
+      cinder_backends:
+        limit_container_types: cinder_volume
+        rdb:
+          volume_driver: cinder.volume.drivers.rbd.RBDDriver
+          volume_group: cinder-volumes
+          volume_backend_name: rdb
+          rbd_pool: cinder-volumes
+          rbd_ceph_conf: /etc/ceph/site.conf
+          rbd_user: cinder</code></pre>
+                </section>
+                <section>
+                    <pre><code>apt-get install aptitude build-essential git ntp ntpdate openssh-server python-dev sudo                                    
+apt-get install bridge-utils debootstrap ifenslave ifenslave-2.6 lsof lvm2 ntp ntpdate openssh-server sudo tcpdump vlan    
+apt-get dist-upgrade                                                                                                       
+echo 'bonding' >> /etc/modules                                                                                             
+echo '8021q' >> /etc/modules                                                                                               
+git clone -b stable/mitaka https://github.com/openstack/openstack-ansible.git /opt/openstack-ansible                       
+cd /opt/openstack-ansible                                                                                                  
+./scripts/bootstrap-ansible.sh                                                                                             
+rsync -avHWS /opt/openstack-ansible/etc/openstack_deploy/ /etc/openstack_deploy/                                           
+cd /etc/openstack_deploy/                                                                                                  
+cp /home/openstack_user_config.yml ./openstack_user_config.yml
+/opt/openstack-ansible/scripts/pw-token-gen.py --file /etc/openstack_deploy/user_secrets.yml
+/opt/openstack-ansible/playbooks/</code></pre>
+                </section>
+                <section>
+                    setup-hosts.yml
+                    <pre><code>---
+- include: openstack-hosts-setup.yml
+- include: security-hardening.yml
+- include: lxc-hosts-setup.yml
+- include: lxc-containers-create.yml
+</code></pre>
+                </section>
+                <section>
+                        setup-infrastructure.yml
+                        <pre><code>---
+- include: haproxy-install.yml
+- include: memcached-install.yml
+- include: repo-install.yml
+- include: galera-install.yml
+- include: rabbitmq-install.yml
+- include: utility-install.yml
+- include: rsyslog-install.yml
+</code></pre>
+                </section>
+                <section>
+                        setup-openstack.yml
+                        <pre><code>---
+- include: os-keystone-install.yml
+- include: os-glance-install.yml
+- include: os-cinder-install.yml
+- include: os-nova-install.yml
+- include: os-neutron-install.yml
+- include: os-heat-install.yml
+- include: os-horizon-install.yml
+- include: os-ceilometer-install.yml
+- include: os-aodh-install.yml
+- include: os-swift-install.yml
+- include: os-ironic-install.yml
+</code></pre>
+                </section>
+                <section>
+                    tous est lxc
+                    <pre><code>lxc-ls -f
+NAME                                           STATE    IPV4                                 IPV6  AUTOSTART              
+--------------------------------------------------------------------------------------------------------------------------
+st2cp1_cinder_api_container-7a73415b           RUNNING  10.0.3.9, 10.33.2.223                -     YES (onboot, openstack)
+st2cp1_cinder_scheduler_container-b3410658     RUNNING  10.0.3.111, 10.33.2.15               -     YES (onboot, openstack)
+st2cp1_cinder_volumes_container-be9d42d1       RUNNING  10.0.3.204, 10.33.2.45, 10.99.2.230  -     YES (onboot, openstack)
+st2cp1_galera_container-e6751205               RUNNING  10.0.3.96, 10.33.2.240               -     YES (onboot, openstack)
+st2cp1_glance_container-803bd530               RUNNING  10.0.3.43, 10.33.2.119               -     YES (onboot, openstack)
+st2cp1_heat_apis_container-9ce2dd65            RUNNING  10.0.3.215, 10.33.2.83               -     YES (onboot, openstack)
+st2cp1_heat_engine_container-205d7839          RUNNING  10.0.3.181, 10.33.2.161              -     YES (onboot, openstack)
+st2cp1_horizon_container-d74f7a7a              RUNNING  10.0.3.63, 10.33.2.176               -     YES (onboot, openstack)
+st2cp1_keystone_container-8f0927e4             RUNNING  10.0.3.121, 10.33.2.157              -     YES (onboot, openstack)
+st2cp1_memcached_container-b730d390            RUNNING  10.0.3.200, 10.33.2.198              -     YES (onboot, openstack)
+st2cp1_neutron_agents_container-2e18f278       RUNNING  10.0.3.202, 10.31.2.128, 10.33.2.10  -     YES (onboot, openstack)
+st2cp1_neutron_server_container-d2509a13       RUNNING  10.0.3.65, 10.33.2.30                -     YES (onboot, openstack)
+st2cp1_nova_api_metadata_container-bbafd554    RUNNING  10.0.3.48, 10.33.2.58                -     YES (onboot, openstack)
+st2cp1_nova_api_os_compute_container-30b9b0bb  RUNNING  10.0.3.32, 10.33.2.180               -     YES (onboot, openstack)
+st2cp1_nova_cert_container-0b08502c            RUNNING  10.0.3.144, 10.33.2.148              -     YES (onboot, openstack)
+st2cp1_nova_conductor_container-c4df8cd3       RUNNING  10.0.3.22, 10.33.2.147               -     YES (onboot, openstack)
+st2cp1_nova_console_container-710768ba         RUNNING  10.0.3.228, 10.33.2.242              -     YES (onboot, openstack)
+st2cp1_nova_scheduler_container-d74f1c65       RUNNING  10.0.3.138, 10.33.2.37               -     YES (onboot, openstack)
+st2cp1_rabbit_mq_container-3220997a            RUNNING  10.0.3.68, 10.33.2.33                -     YES (onboot, openstack)
+st2cp1_repo_container-4c919f75                 RUNNING  10.0.3.92, 10.33.2.9                 -     YES (onboot, openstack)
+st2cp1_rsyslog_container-53b6f38d              RUNNING  10.0.3.210, 10.33.2.82               -     YES (onboot, openstack)
+st2cp1_utility_container-96724a3e              RUNNING  10.0.3.120, 10.33.2.34               -     YES (onboot, openstack)
+</code></pre>
+                </section>
+            </section>
+            <section data-markdown>
+                <script type="text/template">
+                    ### Difficultés rencontrées
+                    * importer les vm existantes
+                    * instance MS server
+                    * virtualisation du (SIP/DHCP/etc)
+                </script>
+            </section>
+            <section data-markdown>
+                Fin du projet 
+                * Retour à la virtualisation
+            </section>
+            <section>
+              jQuery Code Sample
+              <pre><code>
+                $(function () {
+                  $('a').click(function(event) {
+                    alert('Thanks for visiting!'');
+                  });
+                });
+              </code></pre>
+            </section>
+            <section>
+              Hello I have Notes. Press 's' to view
+              <aside class="notes">
+                I'm your Notes :)
+              </aside>
+            </section>
+
+			</div>
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.js"></script>
+
+		<script>
+			// More info https://github.com/hakimel/reveal.js#configuration
+			Reveal.initialize({
+				history: true,
+
+				// More info https://github.com/hakimel/reveal.js#dependencies
+				dependencies: [
+					{ src: 'plugin/markdown/marked.js' },
+					{ src: 'plugin/markdown/markdown.js' },
+					{ src: 'plugin/notes/notes.js', async: true },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } }
+				],
+                transitionSpeed: 'convex',
+                backgroundTransition: 'default',
+			});
+		</script>
+	</body>
+</html>

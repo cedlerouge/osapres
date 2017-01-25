@@ -1,4 +1,4 @@
-# osapres
-slides presenting openstack experience 
+# OSAPRES
 
-This is a nodejs website using reveal.js
+This is a presentation of openstack experience. This use [reveal.js](http://lab.hakim.se/reveal-js/)
+
